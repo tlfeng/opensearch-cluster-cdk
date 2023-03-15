@@ -55,6 +55,9 @@ export interface infraProps extends StackProps{
     readonly mlNodeStorage: number,
     readonly jvmSysPropsString?: string,
     readonly additionalConfig?: string,
+    readonly hasLoadGenerator: boolean,
+    readonly keyName?: string | undefined,
+    readonly loadGeneratorStorage: number,
 }
 
 export class InfraStack extends Stack {
@@ -309,6 +312,35 @@ export class InfraStack extends Stack {
         Tags.of(mlNodeAsg).add('role', 'ml-node');
       }
 
+      // create load generator instance
+      if (props.hasLoadGenerator) {
+        const loadGeneratorAsg = new AutoScalingGroup(this, 'loadGeneratorAsg', {
+          vpc: props.vpc,
+          instanceType: ec2InstanceType,
+          keyName: props.keyName,
+          machineImage: MachineImage.latestAmazonLinux({
+            generation: AmazonLinuxGeneration.AMAZON_LINUX_2,
+            cpuType: props.cpuType,
+          }),
+          role: instanceRole,
+          vpcSubnets: {
+            subnetType: SubnetType.PRIVATE_WITH_EGRESS,
+          },
+          securityGroup: props.securityGroup,
+          blockDevices: [{
+            deviceName: '/dev/xvda',
+            volume: BlockDeviceVolume.ebs(props.loadGeneratorStorage, { deleteOnTermination: true }),
+          }],
+          init: CloudFormationInit.fromElements(...InfraStack.getLoadGeneratorInitElement(this, clusterLogGroup, props)),
+          initOptions: {
+            ignoreFailures: false,
+          },
+          signals: Signals.waitForAll(),
+        });
+
+        Tags.of(loadGeneratorAsg).add('type', 'load generator');
+      }
+
       opensearchListener.addTargets('opensearchTarget', {
         port: 9200,
         targets: [clientNodeAsg],
@@ -526,5 +558,22 @@ export class InfraStack extends Stack {
     }
 
     return cfnInitConfig;
+  }
+
+  private static getLoadGeneratorInitElement(scope: Stack, logGroup: LogGroup, props: infraProps): InitElement[] {
+    const loadGeneratorInitConfig : InitElement[] = [
+      InitCommand.shellCommand('yum install -y zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel openssl-devel xz xz-devel libffi-devel;'
+        + 'yum -y groupinstall "Development Tools";'
+        + 'git clone https://github.com/pyenv/pyenv.git /usr/local/.pyenv;'
+        + 'echo \'export PYENV_ROOT=/usr/local/.pyenv\' >> /etc/profile.d/pyenv.sh;'
+        + 'echo \'export PATH=$PYENV_ROOT/bin:$PATH\' >> /etc/profile.d/pyenv.sh;'
+        + 'echo \'eval "$(pyenv init - --no-rehash)"\' >> /etc/profile.d/pyenv.sh;'
+        + 'source /etc/profile.d/pyenv.sh;'
+        + 'pyenv install 3.9; pyenv global 3.9;'
+        + 'pip install --no-input opensearch-benchmark', {
+        ignoreErrors: false,
+      }),
+    ];
+    return loadGeneratorInitConfig;
   }
 }

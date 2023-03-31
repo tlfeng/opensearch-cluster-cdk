@@ -18,7 +18,7 @@ import {
   InstanceType,
   ISecurityGroup,
   IVpc,
-  MachineImage,
+  MachineImage, Peer, Port, SecurityGroup,
   SubnetType,
 } from 'aws-cdk-lib/aws-ec2';
 import { ManagedPolicy, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
@@ -71,6 +71,8 @@ export class InfraStack extends Stack {
     let seedConfig: string;
     let hostType: InstanceType;
     let singleNodeInstance: Instance;
+    let dataNodeAsg: AutoScalingGroup;
+    let loadGeneratorInstance: Instance;
 
     const clusterLogGroup = new LogGroup(this, 'opensearchLogGroup', {
       logGroupName: `${id}LogGroup/opensearch.log`,
@@ -81,7 +83,8 @@ export class InfraStack extends Stack {
     const instanceRole = new Role(this, 'instanceRole', {
       managedPolicies: [ManagedPolicy.fromAwsManagedPolicyName('AmazonEC2ReadOnlyAccess'),
         ManagedPolicy.fromAwsManagedPolicyName('CloudWatchAgentServerPolicy'),
-        ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore')],
+        ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+        ManagedPolicy.fromAwsManagedPolicyName('AmazonS3FullAccess')],
       assumedBy: new ServicePrincipal('ec2.amazonaws.com'),
     });
 
@@ -222,7 +225,7 @@ export class InfraStack extends Stack {
       });
       Tags.of(seedNodeAsg).add('role', 'manager');
 
-      const dataNodeAsg = new AutoScalingGroup(this, 'dataNodeAsg', {
+      dataNodeAsg = new AutoScalingGroup(this, 'dataNodeAsg', {
         vpc: props.vpc,
         instanceType: ec2InstanceType,
         machineImage: MachineImage.latestAmazonLinux({
@@ -312,35 +315,6 @@ export class InfraStack extends Stack {
         Tags.of(mlNodeAsg).add('role', 'ml-node');
       }
 
-      // create load generator instance
-      if (props.hasLoadGenerator) {
-        const loadGeneratorAsg = new AutoScalingGroup(this, 'loadGeneratorAsg', {
-          vpc: props.vpc,
-          instanceType: ec2InstanceType,
-          keyName: props.keyName,
-          machineImage: MachineImage.latestAmazonLinux({
-            generation: AmazonLinuxGeneration.AMAZON_LINUX_2,
-            cpuType: props.cpuType,
-          }),
-          role: instanceRole,
-          vpcSubnets: {
-            subnetType: SubnetType.PRIVATE_WITH_EGRESS,
-          },
-          securityGroup: props.securityGroup,
-          blockDevices: [{
-            deviceName: '/dev/xvda',
-            volume: BlockDeviceVolume.ebs(props.loadGeneratorStorage, { deleteOnTermination: true }),
-          }],
-          init: CloudFormationInit.fromElements(...InfraStack.getLoadGeneratorInitElement(this, clusterLogGroup, props)),
-          initOptions: {
-            ignoreFailures: false,
-          },
-          signals: Signals.waitForAll(),
-        });
-
-        Tags.of(loadGeneratorAsg).add('type', 'load generator');
-      }
-
       opensearchListener.addTargets('opensearchTarget', {
         port: 9200,
         targets: [clientNodeAsg],
@@ -353,6 +327,56 @@ export class InfraStack extends Stack {
           targets: [clientNodeAsg],
         });
       }
+    }
+
+    // create load generator instance
+    if (props.hasLoadGenerator) {
+      // const loadGeneratorAsg = new AutoScalingGroup(this, 'loadGeneratorAsg', {
+      loadGeneratorInstance = new Instance(this, 'loadGeneratorInstance', {
+        vpc: props.vpc,
+        instanceType: ec2InstanceType,
+        keyName: props.keyName,
+        machineImage: MachineImage.latestAmazonLinux({
+          generation: AmazonLinuxGeneration.AMAZON_LINUX_2,
+          cpuType: props.cpuType,
+        }),
+        role: instanceRole,
+        vpcSubnets: {
+          subnetType: SubnetType.PUBLIC,
+        },
+        securityGroup: props.securityGroup,
+        blockDevices: [{
+          deviceName: '/dev/xvda',
+          volume: BlockDeviceVolume.ebs(props.loadGeneratorStorage, { deleteOnTermination: true }),
+        }],
+        init: CloudFormationInit.fromElements(...InfraStack.getLoadGeneratorInitElement(this, clusterLogGroup, props)),
+        initOptions: {
+          ignoreFailures: false,
+        },
+        // signals: Signals.waitForAll(),
+      });
+      Tags.of(loadGeneratorInstance).add('type', 'load generator');
+      // Tags.of(loadGeneratorAsg).add('type', 'load generator');
+
+      // allow Load Generator instance access the cluster
+      const loadGeneratorInboundSg: SecurityGroup = new SecurityGroup(this, 'loadGeneratorInboundSg', {
+        vpc: props.vpc,
+      });
+      loadGeneratorInboundSg.addIngressRule(Peer.ipv4(`${loadGeneratorInstance.instancePublicIp}/32`), Port.allTcp());
+      if (props.singleNodeCluster) {
+        // @ts-ignore
+        singleNodeInstance.addSecurityGroup(loadGeneratorInboundSg);
+      } else {
+        // @ts-ignore
+        dataNodeAsg.addSecurityGroup(loadGeneratorInboundSg);
+      }
+
+      new CfnOutput(this, 'load-generator-instance-id', {
+        value: loadGeneratorInstance.instanceId,
+      });
+      new CfnOutput(this, 'load-generator-public-ip', {
+        value: loadGeneratorInstance.instancePublicIp,
+      });
     }
 
     new CfnOutput(this, 'loadbalancer-url', {
@@ -425,8 +449,15 @@ export class InfraStack extends Stack {
       // eslint-disable-next-line max-len
       InitCommand.shellCommand('set -ex;/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s'),
       InitCommand.shellCommand('set -ex; sudo echo "vm.max_map_count=262144" >> /etc/sysctl.conf;sudo sysctl -p'),
-      InitCommand.shellCommand(`set -ex;mkdir opensearch; curl -L ${props.distributionUrl} -o opensearch.tar.gz;`
-                + 'tar zxf opensearch.tar.gz -C opensearch --strip-components=1; chown -R ec2-user:ec2-user opensearch;', {
+      // InitCommand.shellCommand(`set -ex;mkdir opensearch; curl -L ${props.distributionUrl} -o opensearch.tar.gz;`
+      //           + 'tar zxf opensearch.tar.gz -C opensearch --strip-components=1; chown -R ec2-user:ec2-user opensearch;', {
+      //   cwd: '/home/ec2-user',
+      //   ignoreErrors: false,
+      // }),
+      InitCommand.shellCommand('set -ex;mkdir opensearch; curl -L '
+      + `https://ci.opensearch.org/ci/dbc/distribution-build-opensearch/${props.opensearchVersion}/latest/linux/${props.cpuArch}`
+      + `/tar/dist/opensearch/opensearch-${props.opensearchVersion}-linux-${props.cpuArch}.tar.gz -o opensearch.tar.gz;`
+        + 'tar zxf opensearch.tar.gz -C opensearch --strip-components=1; chown -R ec2-user:ec2-user opensearch;', {
         cwd: '/home/ec2-user',
         ignoreErrors: false,
       }),
@@ -473,6 +504,12 @@ export class InfraStack extends Stack {
         cfnInitConfig.push(InitCommand.shellCommand('set -ex;cd opensearch; echo "y"|sudo -u ec2-user bin/opensearch-plugin install '
             + `https://ci.opensearch.org/ci/dbc/distribution-build-opensearch/${props.opensearchVersion}/latest/linux/${props.cpuArch}`
             + `/tar/builds/opensearch/core-plugins/discovery-ec2-${props.opensearchVersion}.zip`, {
+          cwd: '/home/ec2-user',
+          ignoreErrors: false,
+        }));
+        cfnInitConfig.push(InitCommand.shellCommand('set -ex;cd opensearch; echo "y"|sudo -u ec2-user bin/opensearch-plugin install '
+          + `https://ci.opensearch.org/ci/dbc/distribution-build-opensearch/${props.opensearchVersion}/latest/linux/${props.cpuArch}`
+          + `/tar/builds/opensearch/core-plugins/repository-s3-${props.opensearchVersion}.zip`, {
           cwd: '/home/ec2-user',
           ignoreErrors: false,
         }));

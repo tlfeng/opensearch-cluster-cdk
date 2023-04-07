@@ -332,6 +332,12 @@ export class InfraStack extends Stack {
 
     // create load generator instance
     if (props.hasLoadGenerator) {
+      const benchmarkLogGroup = new LogGroup(this, 'benchmarkLogGroup', {
+        logGroupName: `${id}LogGroup/benchmark.log`,
+        retention: RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.DESTROY,
+      });
+
       // const loadGeneratorAsg = new AutoScalingGroup(this, 'loadGeneratorAsg', {
       loadGeneratorInstance = new Instance(this, 'loadGeneratorInstance', {
         vpc: props.vpc,
@@ -622,64 +628,6 @@ export class InfraStack extends Stack {
 
       // install useful command line tools
       InitCommand.shellCommand('yum install -y tmux'),
-
-      // configure cloudwatch
-      InitPackage.yum('amazon-cloudwatch-agent'),
-      CloudwatchAgent.asInitFile('/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json',
-        {
-          agent: {
-            metrics_collection_interval: 60,
-            logfile: '/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log',
-            omit_hostname: true,
-            debug: false,
-          },
-          metrics: {
-            metrics_collected: {
-              cpu: {
-                measurement: [
-                  // eslint-disable-next-line max-len
-                  'usage_active', 'usage_guest', 'usage_guest_nice', 'usage_idle', 'usage_iowait', 'usage_irq', 'usage_nice', 'usage_softirq', 'usage_steal', 'usage_system', 'usage_user', 'time_active', 'time_iowait', 'time_system', 'time_user',
-                ],
-              },
-              disk: {
-                measurement: [
-                  'free', 'total', 'used', 'used_percent', 'inodes_free', 'inodes_used', 'inodes_total',
-                ],
-              },
-              diskio: {
-                measurement: [
-                  'reads', 'writes', 'read_bytes', 'write_bytes', 'read_time', 'write_time', 'io_time',
-                ],
-              },
-              mem: {
-                measurement: [
-                  'active', 'available', 'available_percent', 'buffered', 'cached', 'free', 'inactive', 'total', 'used', 'used_percent',
-                ],
-              },
-              net: {
-                measurement: [
-                  'bytes_sent', 'bytes_recv', 'drop_in', 'drop_out', 'err_in', 'err_out', 'packets_sent', 'packets_recv',
-                ],
-              },
-            },
-          },
-          logs: {
-            logs_collected: {
-              files: {
-                collect_list: [
-                  {
-                    file_path: '/home/ec2-user/.benchmark/logs/benchmark.log',
-                    log_group_name: `${logGroup.logGroupName.toString()}`,
-                    // eslint-disable-next-line no-template-curly-in-string
-                    log_stream_name: '{instance_id}',
-                    auto_removal: true,
-                  },
-                ],
-              },
-            },
-            force_flush_interval: 5,
-          },
-        }),
     ];
     return loadGeneratorInitConfig;
   }

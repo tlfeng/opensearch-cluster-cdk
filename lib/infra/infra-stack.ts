@@ -89,7 +89,8 @@ export class InfraStack extends Stack {
     });
 
     const ec2InstanceType = (props.cpuType === AmazonLinuxCpuType.X86_64)
-      ? InstanceType.of(InstanceClass.C5, InstanceSize.XLARGE) : InstanceType.of(InstanceClass.C6G, InstanceSize.XLARGE);
+      // ? InstanceType.of(InstanceClass.C5, InstanceSize.XLARGE) : InstanceType.of(InstanceClass.C6G, InstanceSize.XLARGE);
+      ? InstanceType.of(InstanceClass.M5, InstanceSize.XLARGE) : InstanceType.of(InstanceClass.C6G, InstanceSize.XLARGE);
 
     const alb = new NetworkLoadBalancer(this, 'publicNlb', {
       vpc: props.vpc,
@@ -455,12 +456,19 @@ export class InfraStack extends Stack {
       //   ignoreErrors: false,
       // }),
       InitCommand.shellCommand('set -ex;mkdir opensearch; curl -L '
-      + `https://ci.opensearch.org/ci/dbc/distribution-build-opensearch/${props.opensearchVersion}/latest/linux/${props.cpuArch}`
-      + `/tar/dist/opensearch/opensearch-${props.opensearchVersion}-linux-${props.cpuArch}.tar.gz -o opensearch.tar.gz;`
+        + `https://ci.opensearch.org/ci/dbc/distribution-build-opensearch/${props.opensearchVersion}/latest/linux/${props.cpuArch}`
+        + `/tar/builds/opensearch/dist/opensearch-min-${props.opensearchVersion}-linux-${props.cpuArch}.tar.gz -o opensearch.tar.gz;`
         + 'tar zxf opensearch.tar.gz -C opensearch --strip-components=1; chown -R ec2-user:ec2-user opensearch;', {
         cwd: '/home/ec2-user',
         ignoreErrors: false,
       }),
+      // InitCommand.shellCommand('set -ex;mkdir opensearch; curl -L '
+      // + `https://ci.opensearch.org/ci/dbc/distribution-build-opensearch/${props.opensearchVersion}/latest/linux/${props.cpuArch}`
+      // + `/tar/dist/opensearch/opensearch-${props.opensearchVersion}-linux-${props.cpuArch}.tar.gz -o opensearch.tar.gz;`
+      //   + 'tar zxf opensearch.tar.gz -C opensearch --strip-components=1; chown -R ec2-user:ec2-user opensearch;', {
+      //   cwd: '/home/ec2-user',
+      //   ignoreErrors: false,
+      // }),
       InitCommand.shellCommand('sleep 15'),
     ];
 
@@ -599,6 +607,7 @@ export class InfraStack extends Stack {
 
   private static getLoadGeneratorInitElement(scope: Stack, logGroup: LogGroup, props: infraProps): InitElement[] {
     const loadGeneratorInitConfig : InitElement[] = [
+      // install opensearch-benchmark
       InitCommand.shellCommand('yum install -y zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel openssl-devel xz xz-devel libffi-devel;'
         + 'yum -y groupinstall "Development Tools";'
         + 'git clone https://github.com/pyenv/pyenv.git /usr/local/.pyenv;'
@@ -610,6 +619,10 @@ export class InfraStack extends Stack {
         + 'pip install --no-input opensearch-benchmark', {
         ignoreErrors: false,
       }),
+
+      InitCommand.shellCommand('yum install -y tmux'),
+
+
     ];
     return loadGeneratorInitConfig;
   }

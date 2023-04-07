@@ -6,3 +6,4 @@ network.host: 0.0.0.0
 
 opensearch.experimental.feature.searchable_snapshot.enabled: true
 node.search.cache.size: 30GB
+opensearch.experimental.feature.replication_type.enabled: true

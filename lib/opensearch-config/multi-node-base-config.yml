@@ -3,7 +3,3 @@ cluster.initial_cluster_manager_nodes: ["seed"]
 discovery.seed_providers: ec2
 discovery.ec2.tag.role: manager
 network.host: 0.0.0.0
-
-opensearch.experimental.feature.searchable_snapshot.enabled: true
-node.search.cache.size: 30GB
-opensearch.experimental.feature.replication_type.enabled: true

@@ -450,18 +450,18 @@ export class InfraStack extends Stack {
       // eslint-disable-next-line max-len
       InitCommand.shellCommand('set -ex;/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s'),
       InitCommand.shellCommand('set -ex; sudo echo "vm.max_map_count=262144" >> /etc/sysctl.conf;sudo sysctl -p'),
-      // InitCommand.shellCommand(`set -ex;mkdir opensearch; curl -L ${props.distributionUrl} -o opensearch.tar.gz;`
-      //           + 'tar zxf opensearch.tar.gz -C opensearch --strip-components=1; chown -R ec2-user:ec2-user opensearch;', {
-      //   cwd: '/home/ec2-user',
-      //   ignoreErrors: false,
-      // }),
-      InitCommand.shellCommand('set -ex;mkdir opensearch; curl -L '
-        + `https://ci.opensearch.org/ci/dbc/distribution-build-opensearch/${props.opensearchVersion}/latest/linux/${props.cpuArch}`
-        + `/tar/builds/opensearch/dist/opensearch-min-${props.opensearchVersion}-linux-${props.cpuArch}.tar.gz -o opensearch.tar.gz;`
-        + 'tar zxf opensearch.tar.gz -C opensearch --strip-components=1; chown -R ec2-user:ec2-user opensearch;', {
+      InitCommand.shellCommand(`set -ex;mkdir opensearch; curl -L ${props.distributionUrl} -o opensearch.tar.gz;`
+                + 'tar zxf opensearch.tar.gz -C opensearch --strip-components=1; chown -R ec2-user:ec2-user opensearch;', {
         cwd: '/home/ec2-user',
         ignoreErrors: false,
       }),
+      // InitCommand.shellCommand('set -ex;mkdir opensearch; curl -L '
+      //   + `https://ci.opensearch.org/ci/dbc/distribution-build-opensearch/${props.opensearchVersion}/latest/linux/${props.cpuArch}`
+      //   + `/tar/builds/opensearch/dist/opensearch-min-${props.opensearchVersion}-linux-${props.cpuArch}.tar.gz -o opensearch.tar.gz;`
+      //   + 'tar zxf opensearch.tar.gz -C opensearch --strip-components=1; chown -R ec2-user:ec2-user opensearch;', {
+      //   cwd: '/home/ec2-user',
+      //   ignoreErrors: false,
+      // }),
       // InitCommand.shellCommand('set -ex;mkdir opensearch; curl -L '
       // + `https://ci.opensearch.org/ci/dbc/distribution-build-opensearch/${props.opensearchVersion}/latest/linux/${props.cpuArch}`
       // + `/tar/dist/opensearch/opensearch-${props.opensearchVersion}-linux-${props.cpuArch}.tar.gz -o opensearch.tar.gz;`
@@ -620,9 +620,66 @@ export class InfraStack extends Stack {
         ignoreErrors: false,
       }),
 
+      // install useful command line tools
       InitCommand.shellCommand('yum install -y tmux'),
 
-
+      // configure cloudwatch
+      InitPackage.yum('amazon-cloudwatch-agent'),
+      CloudwatchAgent.asInitFile('/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json',
+        {
+          agent: {
+            metrics_collection_interval: 60,
+            logfile: '/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log',
+            omit_hostname: true,
+            debug: false,
+          },
+          metrics: {
+            metrics_collected: {
+              cpu: {
+                measurement: [
+                  // eslint-disable-next-line max-len
+                  'usage_active', 'usage_guest', 'usage_guest_nice', 'usage_idle', 'usage_iowait', 'usage_irq', 'usage_nice', 'usage_softirq', 'usage_steal', 'usage_system', 'usage_user', 'time_active', 'time_iowait', 'time_system', 'time_user',
+                ],
+              },
+              disk: {
+                measurement: [
+                  'free', 'total', 'used', 'used_percent', 'inodes_free', 'inodes_used', 'inodes_total',
+                ],
+              },
+              diskio: {
+                measurement: [
+                  'reads', 'writes', 'read_bytes', 'write_bytes', 'read_time', 'write_time', 'io_time',
+                ],
+              },
+              mem: {
+                measurement: [
+                  'active', 'available', 'available_percent', 'buffered', 'cached', 'free', 'inactive', 'total', 'used', 'used_percent',
+                ],
+              },
+              net: {
+                measurement: [
+                  'bytes_sent', 'bytes_recv', 'drop_in', 'drop_out', 'err_in', 'err_out', 'packets_sent', 'packets_recv',
+                ],
+              },
+            },
+          },
+          logs: {
+            logs_collected: {
+              files: {
+                collect_list: [
+                  {
+                    file_path: '/home/ec2-user/.benchmark/logs/benchmark.log',
+                    log_group_name: `${logGroup.logGroupName.toString()}`,
+                    // eslint-disable-next-line no-template-curly-in-string
+                    log_stream_name: '{instance_id}',
+                    auto_removal: true,
+                  },
+                ],
+              },
+            },
+            force_flush_interval: 5,
+          },
+        }),
     ];
     return loadGeneratorInitConfig;
   }

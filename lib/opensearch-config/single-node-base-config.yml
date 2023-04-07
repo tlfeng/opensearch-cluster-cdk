@@ -2,7 +2,3 @@ cluster.name: "opensearch"
 network.host: 0.0.0.0
 http.port: 9200
 discovery.type: single-node
-
-opensearch.experimental.feature.searchable_snapshot.enabled: true
-# node.search.cache.size: 30GB
-opensearch.experimental.feature.replication_type.enabled: true

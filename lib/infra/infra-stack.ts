@@ -332,16 +332,10 @@ export class InfraStack extends Stack {
 
     // create load generator instance
     if (props.hasLoadGenerator) {
-      const benchmarkLogGroup = new LogGroup(this, 'benchmarkLogGroup', {
-        logGroupName: `${id}LogGroup/benchmark.log`,
-        retention: RetentionDays.ONE_MONTH,
-        removalPolicy: RemovalPolicy.DESTROY,
-      });
-
       // const loadGeneratorAsg = new AutoScalingGroup(this, 'loadGeneratorAsg', {
       loadGeneratorInstance = new Instance(this, 'loadGeneratorInstance', {
         vpc: props.vpc,
-        instanceType: ec2InstanceType,
+        instanceType: InstanceType.of(InstanceClass.C5, InstanceSize.XLARGE4),
         keyName: props.keyName,
         machineImage: MachineImage.latestAmazonLinux({
           generation: AmazonLinuxGeneration.AMAZON_LINUX_2,
@@ -629,6 +623,15 @@ export class InfraStack extends Stack {
       // install useful command line tools
       InitCommand.shellCommand('yum install -y tmux'),
     ];
+
+    // configure benchmark metrics storage
+    const configFileDir = join(__dirname, '../opensearch-config');
+    const benchmarkConfig: String = readFileSync(`${configFileDir}/benchmark.ini`, 'utf-8');
+    loadGeneratorInitConfig.push(InitCommand.shellCommand(`echo "${benchmarkConfig}" > ./.benchmark/benchmark.ini`,
+      {
+        cwd: '/home/ec2-user',
+      }));
+
     return loadGeneratorInitConfig;
   }
 }

@@ -148,6 +148,9 @@ export class OsClusterEntrypoint {
 
       const suffix = `${scope.node.tryGetContext('suffix')}`;
 
+      const use50heap = `${scope.node.tryGetContext('use50PercentHeap')}`;
+      const use50PercentHeap = use50heap === 'true';
+
       const hasLoadGenerator: string = scope.node.tryGetContext('hasLoadGenerator') ?? 'false';
       if (hasLoadGenerator !== 'true' && hasLoadGenerator !== 'false') {
         throw new Error('hasLoadGenerator parameter is required to be set as - true or false, '
@@ -203,6 +206,7 @@ export class OsClusterEntrypoint {
         mlNodeStorage,
         jvmSysPropsString: jvmSysProps,
         additionalConfig: ymlConfig,
+        use50PercentHeap,
         hasLoadGenerator,
         keyName,
         loadGeneratorStorage,

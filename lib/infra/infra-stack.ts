@@ -90,8 +90,8 @@ export class InfraStack extends Stack {
     });
 
     const ec2InstanceType = (props.cpuType === AmazonLinuxCpuType.X86_64)
-      // ? InstanceType.of(InstanceClass.C5, InstanceSize.XLARGE) : InstanceType.of(InstanceClass.C6G, InstanceSize.XLARGE);
-      ? InstanceType.of(InstanceClass.M5, InstanceSize.XLARGE) : InstanceType.of(InstanceClass.C6G, InstanceSize.XLARGE);
+      ? InstanceType.of(InstanceClass.C5, InstanceSize.XLARGE) : InstanceType.of(InstanceClass.C6G, InstanceSize.XLARGE);
+      // ? InstanceType.of(InstanceClass.M5, InstanceSize.XLARGE) : InstanceType.of(InstanceClass.C6G, InstanceSize.XLARGE);
 
     const alb = new NetworkLoadBalancer(this, 'publicNlb', {
       vpc: props.vpc,

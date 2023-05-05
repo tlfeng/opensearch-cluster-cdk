@@ -640,12 +640,12 @@ export class InfraStack extends Stack {
     ];
 
     // configure benchmark metrics storage
-    // const configFileDir = join(__dirname, '../opensearch-config');
-    // const benchmarkConfig: String = readFileSync(`${configFileDir}/benchmark.ini`, 'utf-8');
-    // loadGeneratorInitConfig.push(InitCommand.shellCommand(`echo "${benchmarkConfig}" > ./.benchmark/benchmark.ini`,
-    //   {
-    //     cwd: '/home/ec2-user',
-    //   }));
+    const configFileDir: String = join(__dirname, '../opensearch-config');
+    const benchmarkConfig: String = readFileSync(`${configFileDir}/benchmark.ini`, 'utf-8');
+    loadGeneratorInitConfig.push(InitCommand.shellCommand(`mkdir .benchmark; echo "${benchmarkConfig}" > ./.benchmark/benchmark.ini`,
+      {
+        cwd: '/home/ec2-user',
+      }));
 
     return loadGeneratorInitConfig;
   }

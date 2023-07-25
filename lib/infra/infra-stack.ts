@@ -358,7 +358,7 @@ export class InfraStack extends Stack {
           generation: AmazonLinuxGeneration.AMAZON_LINUX_2,
           cpuType: props.cpuType,
         }),
-        role: instanceRole,
+        role: this.instanceRole,
         vpcSubnets: {
           subnetType: SubnetType.PUBLIC,
         },

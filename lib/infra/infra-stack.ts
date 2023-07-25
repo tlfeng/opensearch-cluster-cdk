@@ -91,7 +91,7 @@ export class InfraStack extends Stack {
     this.instanceRole = new Role(this, 'instanceRole', {
       managedPolicies: [ManagedPolicy.fromAwsManagedPolicyName('AmazonEC2ReadOnlyAccess'),
         ManagedPolicy.fromAwsManagedPolicyName('CloudWatchAgentServerPolicy'),
-        ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+        ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore')],
       assumedBy: new ServicePrincipal('ec2.amazonaws.com'),
     });
 

@@ -8,16 +8,32 @@ compatible open source license. */
 import { Construct } from 'constructs';
 import { Stack, StackProps } from 'aws-cdk-lib';
 import {
-  AmazonLinuxCpuType, IVpc, SecurityGroup, Vpc,
+  AmazonLinuxCpuType, InstanceType, IVpc, SecurityGroup, Vpc,
 } from 'aws-cdk-lib/aws-ec2';
 import { dump } from 'js-yaml';
 import { NetworkStack } from './networking/vpc-stack';
 import { InfraStack } from './infra/infra-stack';
+import {
+  x64Ec2InstanceType, arm64Ec2InstanceType, getX64InstanceTypes, getArm64InstanceTypes,
+} from './opensearch-config/node-config';
 
 enum cpuArchEnum{
     X64='x64',
     ARM64='arm64'
 }
+
+const getInstanceType = (instanceType: string, arch: string) => {
+  if (arch === 'x64') {
+    if (instanceType !== 'undefined') {
+      return getX64InstanceTypes(instanceType);
+    }
+    return getX64InstanceTypes('r5.xlarge');
+  }
+  if (instanceType !== 'undefined') {
+    return getArm64InstanceTypes(instanceType);
+  }
+  return getArm64InstanceTypes('r6g.xlarge');
+};
 
 export class OsClusterEntrypoint {
     public stacks: Stack[] = [];
@@ -37,7 +53,11 @@ export class OsClusterEntrypoint {
       let dataNodeStorage: number;
       let mlNodeStorage: number;
       let ymlConfig: string = 'undefined';
+      let dataEc2InstanceType: InstanceType;
+      let mlEc2InstanceType: InstanceType;
 
+      const x64InstanceTypes: string[] = Object.keys(x64Ec2InstanceType);
+      const arm64InstanceTypes: string[] = Object.keys(arm64Ec2InstanceType);
       const vpcId: string = scope.node.tryGetContext('vpcId');
       const securityGroupId = scope.node.tryGetContext('securityGroupId');
       const cidrRange = scope.node.tryGetContext('cidr');
@@ -69,14 +89,22 @@ export class OsClusterEntrypoint {
       const dashboardUrl = `${scope.node.tryGetContext('dashboardsUrl')}`;
 
       const cpuArch = `${scope.node.tryGetContext('cpuArch')}`;
+
+      const dataInstanceType = `${scope.node.tryGetContext('dataInstanceType')}`;
+      const mlInstanceType = `${scope.node.tryGetContext('mlInstanceType')}`;
+
       if (cpuArch.toString() === 'undefined') {
         throw new Error('cpuArch parameter is required. The provided value should be either x64 or arm64, any other value is invalid');
         // @ts-ignore
       } else if (Object.values(cpuArchEnum).includes(cpuArch.toString())) {
         if (cpuArch.toString() === cpuArchEnum.X64) {
           instanceCpuType = AmazonLinuxCpuType.X86_64;
+          dataEc2InstanceType = getInstanceType(dataInstanceType, cpuArch.toString());
+          mlEc2InstanceType = getInstanceType(mlInstanceType, cpuArch.toString());
         } else {
           instanceCpuType = AmazonLinuxCpuType.ARM_64;
+          dataEc2InstanceType = getInstanceType(dataInstanceType, cpuArch.toString());
+          mlEc2InstanceType = getInstanceType(mlInstanceType, cpuArch.toString());
         }
       } else {
         throw new Error('Please provide a valid cpu architecture. The valid value can be either x64 or arm64');
@@ -151,6 +179,12 @@ export class OsClusterEntrypoint {
       const use50heap = `${scope.node.tryGetContext('use50PercentHeap')}`;
       const use50PercentHeap = use50heap === 'true';
 
+      const nlbScheme = `${scope.node.tryGetContext('isInternal')}`;
+      const isInternal = nlbScheme === 'true';
+
+      const remoteStore = `${scope.node.tryGetContext('enableRemoteStore')}`;
+      const enableRemoteStore = remoteStore === 'true';
+
       const hasLoadGenerator: string = scope.node.tryGetContext('hasLoadGenerator') ?? 'false';
       if (hasLoadGenerator !== 'true' && hasLoadGenerator !== 'false') {
         throw new Error('hasLoadGenerator parameter is required to be set as - true or false, '
@@ -192,6 +226,8 @@ export class OsClusterEntrypoint {
         clientNodeCount: clientCount,
         cpuArch,
         cpuType: instanceCpuType,
+        dataEc2InstanceType,
+        mlEc2InstanceType,
         dashboardsUrl: dashboardUrl,
         dataNodeCount: dataCount,
         distributionUrl,
@@ -207,6 +243,8 @@ export class OsClusterEntrypoint {
         jvmSysPropsString: jvmSysProps,
         additionalConfig: ymlConfig,
         use50PercentHeap,
+        isInternal,
+        enableRemoteStore,
         hasLoadGenerator,
         keyName,
         loadGeneratorStorage,

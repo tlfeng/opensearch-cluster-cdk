@@ -193,7 +193,7 @@ export class OsClusterEntrypoint {
 
       const keyName: string | undefined = scope.node.tryGetContext('keyName');
 
-      let loadGeneratorStorage: number = scope.node.tryGetContext('LoadGeneratorStorage') ?? 100;
+      let loadGeneratorStorage: number = scope.node.tryGetContext('loadGeneratorStorage') ?? 100;
       loadGeneratorStorage = Math.trunc(loadGeneratorStorage);
 
       const network = new NetworkStack(scope, 'opensearch-network-stack', {

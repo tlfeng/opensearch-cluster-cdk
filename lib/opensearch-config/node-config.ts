@@ -24,7 +24,7 @@ nodeConfig.set('seed-manager', {
 
 nodeConfig.set('seed-data', {
   'node.name': 'seed',
-  'node.roles': ['cluster_manager', 'data', 'search'],
+  'node.roles': ['cluster_manager', 'data'],
 });
 
 nodeConfig.set('client', {

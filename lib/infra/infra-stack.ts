@@ -693,7 +693,7 @@ export class InfraStack extends Stack {
     // configure benchmark metrics storage
     const configFileDir: String = join(__dirname, '../opensearch-config');
     const benchmarkConfig: String = readFileSync(`${configFileDir}/benchmark.ini`, 'utf-8');
-    loadGeneratorInitConfig.push(InitCommand.shellCommand(`mkdir .benchmark; echo "${benchmarkConfig}" > ./.benchmark/benchmark.ini`,
+    loadGeneratorInitConfig.push(InitCommand.shellCommand(`mkdir .benchmark; echo "${benchmarkConfig}" > ./.benchmark/benchmark.ini; chmod a+rw .benchmark`,
       {
         cwd: '/home/ec2-user',
       }));

@@ -14,7 +14,7 @@ nodeConfig.set('manager', {
 });
 
 nodeConfig.set('data', {
-  'node.roles': ['data', 'ingest', 'search'],
+  'node.roles': ['data', 'ingest'],
 });
 
 nodeConfig.set('seed-manager', {

@@ -185,6 +185,17 @@ export class OsClusterEntrypoint {
       const remoteStore = `${scope.node.tryGetContext('enableRemoteStore')}`;
       const enableRemoteStore = remoteStore === 'true';
 
+      const hasLoadGenerator: string = scope.node.tryGetContext('hasLoadGenerator') ?? 'false';
+      if (hasLoadGenerator !== 'true' && hasLoadGenerator !== 'false') {
+        throw new Error('hasLoadGenerator parameter is required to be set as - true or false, '
+          + 'otherwise default to be false if not set');
+      }
+
+      const keyName: string | undefined = scope.node.tryGetContext('keyName');
+
+      let loadGeneratorStorage: number = scope.node.tryGetContext('loadGeneratorStorage') ?? 100;
+      loadGeneratorStorage = Math.trunc(loadGeneratorStorage);
+
       const network = new NetworkStack(scope, 'opensearch-network-stack', {
         cidrBlock: cidrRange,
         maxAzs: 3,
@@ -234,6 +245,9 @@ export class OsClusterEntrypoint {
         use50PercentHeap,
         isInternal,
         enableRemoteStore,
+        hasLoadGenerator,
+        keyName,
+        loadGeneratorStorage,
         ...props,
       });
 

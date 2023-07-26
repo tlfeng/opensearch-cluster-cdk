@@ -18,7 +18,7 @@ import {
   InstanceType,
   ISecurityGroup,
   IVpc,
-  MachineImage,
+  MachineImage, Peer, Port, SecurityGroup,
   SubnetType,
 } from 'aws-cdk-lib/aws-ec2';
 import { ManagedPolicy, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
@@ -60,7 +60,10 @@ export interface infraProps extends StackProps{
     readonly mlEc2InstanceType: InstanceType,
     readonly use50PercentHeap: boolean,
     readonly isInternal: boolean,
-    readonly enableRemoteStore: boolean
+    readonly enableRemoteStore: boolean,
+    readonly hasLoadGenerator: boolean,
+    readonly keyName?: string | undefined,
+    readonly loadGeneratorStorage: number
 }
 
 export class InfraStack extends Stack {
@@ -76,6 +79,8 @@ export class InfraStack extends Stack {
     let seedConfig: string;
     let hostType: InstanceType;
     let singleNodeInstance: Instance;
+    let dataNodeAsg: AutoScalingGroup;
+    let loadGeneratorInstance: Instance;
 
     const clusterLogGroup = new LogGroup(this, 'opensearchLogGroup', {
       logGroupName: `${id}LogGroup/opensearch.log`,
@@ -238,7 +243,7 @@ export class InfraStack extends Stack {
       });
       Tags.of(seedNodeAsg).add('role', 'manager');
 
-      const dataNodeAsg = new AutoScalingGroup(this, 'dataNodeAsg', {
+      dataNodeAsg = new AutoScalingGroup(this, 'dataNodeAsg', {
         vpc: props.vpc,
         instanceType: props.dataEc2InstanceType,
         machineImage: MachineImage.latestAmazonLinux({
@@ -340,6 +345,56 @@ export class InfraStack extends Stack {
           targets: [clientNodeAsg],
         });
       }
+    }
+
+    // create load generator instance
+    if (props.hasLoadGenerator) {
+      // const loadGeneratorAsg = new AutoScalingGroup(this, 'loadGeneratorAsg', {
+      loadGeneratorInstance = new Instance(this, 'loadGeneratorInstance', {
+        vpc: props.vpc,
+        instanceType: InstanceType.of(InstanceClass.C5, InstanceSize.XLARGE4),
+        keyName: props.keyName,
+        machineImage: MachineImage.latestAmazonLinux({
+          generation: AmazonLinuxGeneration.AMAZON_LINUX_2,
+          cpuType: props.cpuType,
+        }),
+        role: this.instanceRole,
+        vpcSubnets: {
+          subnetType: SubnetType.PUBLIC,
+        },
+        securityGroup: props.securityGroup,
+        blockDevices: [{
+          deviceName: '/dev/xvda',
+          volume: BlockDeviceVolume.ebs(props.loadGeneratorStorage, { deleteOnTermination: true }),
+        }],
+        init: CloudFormationInit.fromElements(...InfraStack.getLoadGeneratorInitElement(this, clusterLogGroup, props)),
+        initOptions: {
+          ignoreFailures: false,
+        },
+        // signals: Signals.waitForAll(),
+      });
+      Tags.of(loadGeneratorInstance).add('type', 'load generator');
+      // Tags.of(loadGeneratorAsg).add('type', 'load generator');
+
+      // allow Load Generator instance access the cluster
+      const loadGeneratorInboundSg: SecurityGroup = new SecurityGroup(this, 'loadGeneratorInboundSg', {
+        vpc: props.vpc,
+      });
+      loadGeneratorInboundSg.addIngressRule(Peer.ipv4(`${loadGeneratorInstance.instancePublicIp}/32`), Port.allTcp());
+      if (props.singleNodeCluster) {
+        // @ts-ignore
+        singleNodeInstance.addSecurityGroup(loadGeneratorInboundSg);
+      } else {
+        // @ts-ignore
+        dataNodeAsg.addSecurityGroup(loadGeneratorInboundSg);
+      }
+
+      new CfnOutput(this, 'load-generator-instance-id', {
+        value: loadGeneratorInstance.instanceId,
+      });
+      new CfnOutput(this, 'load-generator-public-ip', {
+        value: loadGeneratorInstance.instancePublicIp,
+      });
     }
 
     new CfnOutput(this, 'loadbalancer-url', {
@@ -614,5 +669,35 @@ export class InfraStack extends Stack {
     }
 
     return cfnInitConfig;
+  }
+
+  private static getLoadGeneratorInitElement(scope: Stack, logGroup: LogGroup, props: infraProps): InitElement[] {
+    const loadGeneratorInitConfig : InitElement[] = [
+      // install opensearch-benchmark
+      InitCommand.shellCommand('yum install -y zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel openssl-devel xz xz-devel libffi-devel;'
+        + 'yum -y groupinstall "Development Tools";'
+        + 'git clone https://github.com/pyenv/pyenv.git /usr/local/.pyenv;'
+        + 'echo \'export PYENV_ROOT=/usr/local/.pyenv\' >> /etc/profile.d/pyenv.sh;'
+        + 'echo \'export PATH=$PYENV_ROOT/bin:$PATH\' >> /etc/profile.d/pyenv.sh;'
+        + 'echo \'eval "$(pyenv init - --no-rehash)"\' >> /etc/profile.d/pyenv.sh;'
+        + 'source /etc/profile.d/pyenv.sh;'
+        + 'pyenv install 3.9; pyenv global 3.9;'
+        + 'pip install --no-input opensearch-benchmark', {
+        ignoreErrors: false,
+      }),
+
+      // install useful command line tools
+      InitCommand.shellCommand('yum install -y tmux'),
+    ];
+
+    // configure benchmark metrics storage
+    const configFileDir: String = join(__dirname, '../opensearch-config');
+    const benchmarkConfig: String = readFileSync(`${configFileDir}/benchmark.ini`, 'utf-8');
+    loadGeneratorInitConfig.push(InitCommand.shellCommand(`mkdir .benchmark; echo "${benchmarkConfig}" > ./.benchmark/benchmark.ini; chmod a+rw .benchmark`,
+      {
+        cwd: '/home/ec2-user',
+      }));
+
+    return loadGeneratorInitConfig;
   }
 }

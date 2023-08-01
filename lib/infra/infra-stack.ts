@@ -540,8 +540,8 @@ export class InfraStack extends Stack {
           }));
         }
 
-        // eslint-disable-next-line max-len
-        cfnInitConfig.push(InitCommand.shellCommand(`set -ex;cd opensearch; echo "cluster.remote_store.repository: ${scope.stackName}-repo" >> config/opensearch.yml`, {
+        cfnInitConfig.push(InitCommand.shellCommand(`set -ex;cd opensearch; echo "cluster.remote_store.segment.repository: ${scope.stackName}-repo\n`
+        + `cluster.remote_store.translog.repository: ${scope.stackName}-repo" >> config/opensearch.yml`, {
           cwd: '/home/ec2-user',
           ignoreErrors: false,
         }));

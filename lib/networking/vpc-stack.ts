@@ -76,7 +76,7 @@ export class NetworkStack extends Stack {
     this.osSecurityGroup.addIngressRule(serverAccess, Port.allTcp());
     this.osSecurityGroup.addIngressRule(this.osSecurityGroup, Port.allTraffic());
     // Open port 9200 to the public to run benchmark by Mensor (prod.mensor.searchservices.aws.dev)
-    this.osSecurityGroup.addIngressRule(Peer.anyIpv4(), Port.tcp(9200));
+    // this.osSecurityGroup.addIngressRule(Peer.anyIpv4(), Port.tcp(9200));
   }
 
   private static getServerAccess(restrictServerAccessTo: string, serverAccessType: string): IPeer {
